@@ -22,8 +22,6 @@ import (
 	"net/url"
 
 	"golang.org/x/net/proxy"
-
-	"github.com/elastic/beats/libbeat/logp"
 )
 
 // ProxyConfig holds the configuration information required to proxy
@@ -67,7 +65,6 @@ func ProxyDialer(config *ProxyConfig, forward Dialer) (Dialer, error) {
 		return nil, err
 	}
 
-	logp.Info("proxy host: '%s'", url.Host)
 	return DialerFunc(func(network, address string) (net.Conn, error) {
 		var err error
 		var addresses []string
@@ -80,7 +77,6 @@ func ProxyDialer(config *ProxyConfig, forward Dialer) (Dialer, error) {
 		if config.LocalResolve {
 			addresses, err = net.LookupHost(host)
 			if err != nil {
-				logp.Warn(`DNS lookup failure "%s": %v`, host, err)
 				return nil, err
 			}
 		} else {

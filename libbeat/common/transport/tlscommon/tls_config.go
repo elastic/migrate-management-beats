@@ -20,8 +20,6 @@ package tlscommon
 import (
 	"crypto/tls"
 	"crypto/x509"
-
-	"github.com/elastic/beats/libbeat/logp"
 )
 
 // TLSConfig is the interface used to configure a tcp client or server from a `Config`
@@ -75,9 +73,6 @@ func (c *TLSConfig) BuildModuleConfig(host string) *tls.Config {
 
 	minVersion, maxVersion := extractMinMaxVersion(c.Versions)
 	insecure := c.Verification != VerifyFull
-	if insecure {
-		logp.Warn("SSL/TLS verifications disabled.")
-	}
 
 	return &tls.Config{
 		ServerName:         host,

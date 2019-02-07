@@ -22,8 +22,6 @@ import (
 	"net"
 	"sync"
 	"time"
-
-	"github.com/elastic/beats/libbeat/testing"
 )
 
 type Client struct {
@@ -128,7 +126,6 @@ func (c *Client) Close() error {
 	defer c.mutex.Unlock()
 
 	if c.conn != nil {
-		debugf("closing")
 		err := c.conn.Close()
 		c.conn = nil
 		return err
@@ -215,37 +212,11 @@ func (c *Client) SetWriteDeadline(t time.Time) error {
 
 func (c *Client) handleError(err error) error {
 	if err != nil {
-		debugf("handle error: %v", err)
-
 		if nerr, ok := err.(net.Error); !(ok && (nerr.Temporary() || nerr.Timeout())) {
 			_ = c.Close()
 		}
 	}
 	return err
-}
-
-func (c *Client) Test(d testing.Driver) {
-	d.Run("logstash: "+c.host, func(d testing.Driver) {
-		d.Run("connection", func(d testing.Driver) {
-			netDialer := TestNetDialer(d, c.config.Timeout)
-			_, err := netDialer.Dial("tcp", c.host)
-			d.Fatal("dial up", err)
-		})
-
-		if c.config.TLS == nil {
-			d.Warn("TLS", "secure connection disabled")
-		} else {
-			d.Run("TLS", func(d testing.Driver) {
-				netDialer := NetDialer(c.config.Timeout)
-				tlsDialer, err := TestTLSDialer(d, netDialer, c.config.TLS, c.config.Timeout)
-				_, err = tlsDialer.Dial("tcp", c.host)
-				d.Fatal("dial up", err)
-			})
-		}
-
-		err := c.Connect()
-		d.Fatal("talk to server", err)
-	})
 }
 
 func (c *Client) String() string {
