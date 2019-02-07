@@ -18,31 +18,24 @@
 package main
 
 import (
-	"flag"
+	"io/ioutil"
 	"log"
-)
 
-var (
-	esURL    string
-	username string
-	password string
+	yaml "gopkg.in/yaml.v1"
 )
-
-func init() {
-	flag.StringVar(&esURL, "hostname", "http://localhost:9200", "URL of Elasticsearch running the central management")
-	flag.StringVar(&esURL, "username", "elastic", "An admin user who has access to central management indices")
-	flag.StringVar(&esURL, "password", "changeme", "Password of the user")
-}
 
 func main() {
-	flag.Parse()
-	c := config{
-		esURL:    esURL,
-		username: username,
-		password: password,
+	cfgFile, err := ioutil.ReadFile("migrate.yml")
+	if err != nil {
+		log.Fatalf("Error reading configuration: %+v", err)
+	}
+	conf := defaultConfig
+	err = yaml.Unmarshal(cfgFile, &conf)
+	if err != nil {
+		log.Fatalf("Error while reading configuration: %+v", err)
 	}
 
-	err := migrate(c)
+	err = migrate(conf)
 	if err != nil {
 		log.Fatalf("Error while migrating: %+v", err)
 	}

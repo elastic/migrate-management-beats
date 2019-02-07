@@ -24,15 +24,19 @@ import (
 	"log"
 	"time"
 
+	//"gopkg.in/yaml.v2"
+
 	"github.com/elastic/migrate-management-beats/libbeat/common"
 	"github.com/elastic/migrate-management-beats/libbeat/common/schema"
+	"github.com/elastic/migrate-management-beats/libbeat/common/transport/tlscommon"
 	"github.com/elastic/migrate-management-beats/libbeat/outputs/elasticsearch"
 )
 
 type config struct {
-	esURL    string
-	username string
-	password string
+	URL      string            `yaml:url`
+	Username string            `yaml:username`
+	Password string            `yaml:password`
+	SSL      *tlscommon.Config `yaml:ssl`
 }
 
 const (
@@ -53,6 +57,13 @@ var (
 			"name":  schema.Conv{Key: "_source.tag.name", Func: schema.NestedKeys, Optional: true},
 			"color": schema.Conv{Key: "_source.tag.color", Func: schema.NestedKeys, Optional: true},
 		},
+	}
+
+	defaultConfig = config{
+		URL:      "http://localhost:9200",
+		Username: "elastic",
+		Password: "changeme",
+		SSL:      nil,
 	}
 )
 
@@ -84,19 +95,25 @@ func migrate(c config) error {
 }
 
 func connectToES(c config) (*elasticsearch.Client, error) {
+	tlsConfig, err := tlscommon.LoadTLSConfig(c.SSL)
+	if err != nil {
+		return nil, err
+	}
+
 	client, err := elasticsearch.NewClient(elasticsearch.ClientSettings{
-		URL:              c.esURL,
-		Username:         c.username,
-		Password:         c.password,
+		URL:              c.URL,
+		Username:         c.Username,
+		Password:         c.Password,
 		Timeout:          60 * time.Second,
 		CompressionLevel: 3,
+		TLS:              tlsConfig,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("error while creating Elasticsearch client: %+v", err)
 	}
 	err = client.Connect()
 	if err != nil {
-		return nil, fmt.Errorf("error while connecting to Elasticsearch instance: %+v", err)
+		return nil, err
 	}
 	log.Println("Connected to Elasticsearch")
 
