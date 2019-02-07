@@ -116,11 +116,6 @@ func connectToES(c config) (*elasticsearch.Client, error) {
 	}
 	log.Println("Connected to Elasticsearch")
 
-	//esVersion := client.GetVersion()
-	//isRequiredVersion := esVersion.EqualMajorAndMinor(m.to)
-	//if !isRequiredVersion {
-	//	return nil, fmt.Errorf("cannot migrate because of Elasticsearch version. expected 6.7, actual %s", esVersion.String())
-	//}
 	return client, nil
 }
 
