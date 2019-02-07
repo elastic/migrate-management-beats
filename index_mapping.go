@@ -1,3 +1,8 @@
+package main
+
+import "encoding/json"
+
+var newMapping = mustJSON(`
 {
     "dynamic": "strict",
     "properties": {
@@ -103,4 +108,14 @@
             "type": "keyword"
         }
     }
+}
+`)
+
+func mustJSON(mapping string) map[string]interface{} {
+	var newMapping map[string]interface{}
+	err := json.Unmarshal([]byte(mapping), &newMapping)
+	if err != nil {
+		panic("error while marshaling new index mapping")
+	}
+	return newMapping
 }

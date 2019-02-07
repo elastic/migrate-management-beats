@@ -20,7 +20,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"time"
 
@@ -147,21 +146,12 @@ func backupOldIndex(client *elasticsearch.Client) error {
 }
 
 func createNewIndexWithMapping(client *elasticsearch.Client) error {
-	newMapping, err := ioutil.ReadFile(indexMappingFilePath)
-	if err != nil {
-		return fmt.Errorf("error while reading new index mapping from file: %+v", err)
-	}
-	var mapping map[string]interface{}
-	err = json.Unmarshal(newMapping, &mapping)
-	if err != nil {
-		return fmt.Errorf("error while marshaling new index mapping: %+v", err)
-	}
 	body := map[string]interface{}{
 		"mappings": map[string]interface{}{
-			"_doc": mapping,
+			"_doc": newMapping,
 		},
 	}
-	_, _, err = client.CreateIndex(newManagementIndexName, body)
+	_, _, err := client.CreateIndex(newManagementIndexName, body)
 	if err != nil {
 		return fmt.Errorf("error while creating new index: %+v", err)
 	}
