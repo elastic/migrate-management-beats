@@ -36,7 +36,7 @@ import (
 	"bytes"
 	"errors"
 
-	"github.com/elastic/beats/libbeat/logp"
+	"github.com/elastic/migrate-management-beats/libbeat/logp"
 )
 
 // Error returned if Append or Write operation is not allowed due to the buffer
