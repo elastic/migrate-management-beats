@@ -18,11 +18,20 @@
 package main
 
 import (
+	"flag"
 	"io/ioutil"
 	"log"
 
 	yaml "gopkg.in/yaml.v2"
 )
+
+var (
+	startingStep uint
+)
+
+func init() {
+	flag.UintVar(&startingStep, "step", 1, "Number of step to start from after a failure")
+}
 
 func main() {
 	cfgFile, err := ioutil.ReadFile("migrate.yml")
@@ -35,7 +44,7 @@ func main() {
 		log.Fatalf("Error while reading configuration: %+v", err)
 	}
 
-	err = migrate(conf)
+	err = migrate(conf, startingStep)
 	if err != nil {
 		log.Fatalf("Error while migrating: %+v", err)
 	}
