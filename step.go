@@ -26,6 +26,10 @@ import (
 	"github.com/elastic/migrate-management-beats/libbeat/outputs/elasticsearch"
 )
 
+const (
+	maxTagPageSize = 1000
+)
+
 type step interface {
 	Do(*elasticsearch.Client) error
 	Undo(*elasticsearch.Client) error
@@ -234,9 +238,7 @@ func getAllTagsToTransform(client *elasticsearch.Client) ([]map[string]interface
 		return nil, fmt.Errorf("error while getting tags to transform: %+v", err)
 	}
 
-	total := results.Hits.Total.Value
 	tags := make([]map[string]interface{}, 0)
-
 	for _, rawTag := range results.Hits.Hits {
 		var tag common.MapStr
 		err = json.Unmarshal(rawTag, &tag)
@@ -246,8 +248,9 @@ func getAllTagsToTransform(client *elasticsearch.Client) ([]map[string]interface
 		tags = append(tags, tag)
 	}
 
-	from += len(results.Hits.Hits)
-	for from < total {
+	size := len(results.Hits.Hits)
+	from += size
+	for size == maxTagPageSize {
 		results, err := queryTagsToTransform(client, from)
 		if err != nil {
 			return nil, err
@@ -262,7 +265,8 @@ func getAllTagsToTransform(client *elasticsearch.Client) ([]map[string]interface
 			tags = append(tags, tag)
 		}
 
-		from += len(results.Hits.Hits)
+		size = len(results.Hits.Hits)
+		from += size
 	}
 
 	return tags, nil
@@ -274,6 +278,7 @@ func queryTagsToTransform(client *elasticsearch.Client, from int) (*elasticsearc
 	}
 	body := map[string]interface{}{
 		"from": from,
+		"size": maxTagPageSize,
 	}
 
 	c, results, err := client.SearchURIWithBody(managementIndexName, "", params, body)
