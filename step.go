@@ -220,12 +220,18 @@ ctx._source.tag.remove('last_updated');
 			return fmt.Errorf("error while transforming tag into configuration_block: %+v", err)
 		}
 
+		var docInBulk []interface{}
 		for _, configurationBlock := range configurationBlocks {
-			_, _, err = client.Index(newManagementIndexName, "_doc", "", nil, configurationBlock)
-			if err != nil {
-				return fmt.Errorf("error while indexing new configration_block: %+v", err)
+			indexReq := map[string]interface{}{
+				"index": configurationBlock,
 			}
+			docInBulk = append(docInBulk, indexReq)
 		}
+		_, err = client.Bulk(newManagementIndexName, "_doc", nil, docInBulk)
+		if err != nil {
+			return fmt.Errorf("error while performing bulk request: %+v", err)
+		}
+
 	}
 	log.Println("configuration_blocks are migrated to new index")
 	return nil
