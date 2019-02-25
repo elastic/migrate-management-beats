@@ -92,6 +92,7 @@ func migrate(c config, step uint) error {
 			}
 			return fmt.Errorf("rolled back migration due to %+v", err)
 		}
+		stepsToUndo.Done(migrationSteps[i])
 	}
 
 	return nil
