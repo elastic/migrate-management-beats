@@ -82,29 +82,18 @@ func migrate(c config, step uint) error {
 		return fmt.Errorf("error while connecting to Elasticsearch: %+v", err)
 	}
 
-	for i := step; i < uint(len(migrationSteps)); i++ {
+	for i := step - 1; i < uint(len(migrationSteps)); i++ {
 		err = migrationSteps[i].Do(client)
 		if err != nil {
-			undoErr := undoMigration(client, i)
+			undoErr := migrationSteps[i].Undo(client, i)
 			if undoErr != nil {
 				return fmt.Errorf("error while rolling back from error %+v: %+v", err, undoErr)
 			}
-			return fmt.Errorf("rolled back migration due to %+v", err)
+			return fmt.Errorf("rolled back migration due to %+v, can be continued from step %d", err, i+1)
 		}
 	}
 
 	return nil
-}
-
-func undoMigration(client *elasticsearch.Client, index int) error {
-	for i := index; i >= 0; i-- {
-		err := s[i].Undo(client)
-		if err != nil {
-			return fmt.Errorf("error undoing step #%d: %+v", i+1, err)
-		}
-	}
-	return nil
-
 }
 
 func connectToES(c config) (*elasticsearch.Client, error) {
