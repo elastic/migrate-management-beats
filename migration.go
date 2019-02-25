@@ -40,7 +40,6 @@ const (
 	managementIndexName       = ".management-beats"
 	backupManagementIndexName = ".management-beats-backup"
 	newManagementIndexName    = ".management-beats-new"
-	indexMappingFilePath      = "new-index-mapping.json"
 )
 
 var (
