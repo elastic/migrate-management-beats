@@ -57,13 +57,11 @@ func (s steps) Done(step step) steps {
 }
 
 func (s steps) Undo(client *elasticsearch.Client) error {
-	i := len(s)
-	for i <= 0 {
+	for i := len(s); i >= 0; i-- {
 		err := s[i].Undo(client)
 		if err != nil {
 			return fmt.Errorf("error undoing step #%d: %+v", i+1, err)
 		}
-		i--
 	}
 	return nil
 }
