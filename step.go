@@ -35,8 +35,6 @@ type step interface {
 	Undo(*elasticsearch.Client) error
 }
 
-type steps []step
-
 type backupStep struct {
 	oldMapping        map[string]interface{}
 	oldSettings       map[string]interface{}
@@ -45,25 +43,17 @@ type backupStep struct {
 	oldIndexDeleted   bool
 }
 
-type createNewIndexStep struct{}
+type createNewIndexStep struct {
+	created bool
+}
+
 type migrateFromOldIndexStep struct{}
+
 type finalStep struct {
-	aliasDeleted       bool
-	backupIndexDeleted bool
-}
-
-func (s steps) Done(step step) steps {
-	return append(s, step)
-}
-
-func (s steps) Undo(client *elasticsearch.Client) error {
-	for i := len(s); i >= 0; i-- {
-		err := s[i].Undo(client)
-		if err != nil {
-			return fmt.Errorf("error undoing step #%d: %+v", i+1, err)
-		}
-	}
-	return nil
+	aliasDeleted             bool
+	mangementIndexCreated    bool
+	newTemporaryIndexDeleted bool
+	backupIndexDeleted       bool
 }
 
 func (b backupStep) Do(client *elasticsearch.Client) error {
@@ -72,20 +62,22 @@ func (b backupStep) Do(client *elasticsearch.Client) error {
 	if err != nil {
 		return fmt.Errorf("error while backup up old .management-beats index: %+v", err)
 	}
+	b.backupIndexExists = true
 	log.Printf("Old %s index is reindexed into %s\n", managementIndexName, backupManagementIndexName)
 
 	_, err = client.DeleteIndex(managementIndexName)
 	if err != nil {
 		return fmt.Errorf("error while deleting old .management-beats index: %+v", err)
 	}
+	b.oldIndexDeleted = true
 	log.Printf("Index %s is deleted\n", managementIndexName)
 
 	_, _, err = client.Alias(backupManagementIndexName, managementIndexName)
 	if err != nil {
 		return fmt.Errorf("error while creating alias for the backup: %+v", err)
 	}
+	b.aliasCreated = true
 	log.Printf("Alias %s is created for the backup index\n", managementIndexName)
-	stepsToUndo.Done(b)
 	return nil
 }
 
@@ -116,9 +108,14 @@ func (b backupStep) Undo(client *elasticsearch.Client) error {
 	return nil
 }
 
-func (b createNewIndexStep) Do(client *elasticsearch.Client) error {
+func (c createNewIndexStep) Do(client *elasticsearch.Client) error {
 	log.Println("STEP #2: Create new temporary index")
-	return createNewIndexWithMapping(client, newManagementIndexName, newMapping, nil)
+
+	err := createNewIndexWithMapping(client, newManagementIndexName, newMapping, nil)
+	if err != nil {
+		return err
+	}
+	c.created = true
 }
 
 func createNewIndexWithMapping(client *elasticsearch.Client, index string, mapping, settings map[string]interface{}) error {
@@ -137,12 +134,14 @@ func createNewIndexWithMapping(client *elasticsearch.Client, index string, mappi
 }
 
 func (c createNewIndexStep) Undo(client *elasticsearch.Client) error {
-	_, err := client.DeleteIndex(newManagementIndexName)
-	if err != nil {
-		return fmt.Errorf("error while deleting temporary .management-beats-new index: %+v", err)
-	}
+	if c.created {
+		_, err := client.DeleteIndex(newManagementIndexName)
+		if err != nil {
+			return fmt.Errorf("error while deleting temporary .management-beats-new index: %+v", err)
+		}
 
-	log.Printf("Index %s has been removed\n", managementIndexName)
+		log.Printf("Index %s has been removed\n", managementIndexName)
+	}
 	return nil
 }
 
@@ -354,28 +353,48 @@ func (f finalStep) Do(client *elasticsearch.Client) error {
 	if err != nil {
 		return fmt.Errorf("error while removing .management-beats alias: %+v", err)
 	}
+	f.aliasDeleted = true
 	log.Printf("Alias %s is removed\n", managementIndexName)
 
 	_, _, err = client.Reindex(newManagementIndexName, managementIndexName, nil)
 	if err != nil {
 		return fmt.Errorf("error while moving documents to .management-beats: %+v", err)
 	}
+	f.mangementIndexCreated = true
 	log.Printf("New index is reindexed into %s\n", managementIndexName)
 
-	indicesToDelete := []string{backupManagementIndexName, newManagementIndexName}
-	for _, index := range indicesToDelete {
-		_, err = client.DeleteIndex(index)
-		if err != nil {
-			return fmt.Errorf("error while deleting intermetiate index '%s': %+v", index, err)
-		}
+	_, err = client.DeleteIndex(newManagementIndexName)
+	if err != nil {
+		return fmt.Errorf("error while deleting index '%s': %+v", index, err)
 	}
+	f.newTemporaryIndexDeleted = true
+
+	_, err = client.DeleteIndex(backupManagementIndexName)
+	if err != nil {
+		return fmt.Errorf("error while deleting index '%s': %+v", index, err)
+	}
+	f.backupIndexDeleted = true
+
 	log.Println("Intermediate indices are deleted")
 	return nil
 }
 
 func (f finalStep) Undo(client *elasticsearch.Client) error {
 	if f.aliasDeleted {
-
+		if f.mangementIndexCreated {
+			if !f.newTemporaryIndexDeleted {
+				log.Printf("The data has been migrated, but the intermediate indices are not deleted: %s, %s. Try to delete them manually.\n",
+					backupManagementIndexName, newManagementIndexName)
+				return nil
+			}
+			if !f.backupIndexDeleted {
+				log.Printf("The data has been migrated, but the backup index cannot be deleted %s. Try to delete it manually.",
+					backupManagementIndexName)
+				return nil
+			}
+		}
+		_, _, err = client.Alias(backupManagementIndexName, managementIndexName)
+		return err
 	}
 
 	return nil

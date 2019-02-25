@@ -71,7 +71,6 @@ var (
 		migrateFromOldIndexStep{},
 		finalStep{},
 	}
-	stepsToUndo = steps{}
 )
 
 // migrate migrates beats central management from 6.6 to 6.7
@@ -86,16 +85,26 @@ func migrate(c config, step uint) error {
 	for i := step; i < uint(len(migrationSteps)); i++ {
 		err = migrationSteps[i].Do(client)
 		if err != nil {
-			undoErr := stepsToUndo.Undo(client)
+			undoErr := undoMigration(client, i)
 			if undoErr != nil {
 				return fmt.Errorf("error while rolling back from error %+v: %+v", err, undoErr)
 			}
 			return fmt.Errorf("rolled back migration due to %+v", err)
 		}
-		stepsToUndo.Done(migrationSteps[i])
 	}
 
 	return nil
+}
+
+func undoMigration(client *elasticsearch.Client, index int) error {
+	for i := index; i >= 0; i-- {
+		err := s[i].Undo(client)
+		if err != nil {
+			return fmt.Errorf("error undoing step #%d: %+v", i+1, err)
+		}
+	}
+	return nil
+
 }
 
 func connectToES(c config) (*elasticsearch.Client, error) {
