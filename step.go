@@ -67,24 +67,24 @@ func (s steps) Undo(client *elasticsearch.Client) error {
 }
 
 func (b backupStep) Do(client *elasticsearch.Client) error {
-	log.Println("STEP #1: Backup existing .management-beats index")
+	log.Printf("STEP #1: Backup existing %s index\n", managementIndexName)
 	_, _, err := client.Reindex(managementIndexName, backupManagementIndexName, nil)
 	if err != nil {
 		return fmt.Errorf("error while backup up old .management-beats index: %+v", err)
 	}
-	log.Println("Old .management-beats index is reindexed into .management-beats-backup")
+	log.Printf("Old %s index is reindexed into %s\n", managementIndexName, backupManagementIndexName)
 
 	_, err = client.DeleteIndex(managementIndexName)
 	if err != nil {
 		return fmt.Errorf("error while deleting old .management-beats index: %+v", err)
 	}
-	log.Println("Index .management-index is deleted")
+	log.Printf("Index %s is deleted\n", managementIndexName)
 
 	_, _, err = client.Alias(backupManagementIndexName, managementIndexName)
 	if err != nil {
 		return fmt.Errorf("error while creating alias for the backup: %+v", err)
 	}
-	log.Println("Alias .management-beats is created for the backup index")
+	log.Printf("Alias %s is created for the backup index\n", managementIndexName)
 	stepsToUndo.Done(b)
 	return nil
 }
@@ -132,7 +132,7 @@ func createNewIndexWithMapping(client *elasticsearch.Client, index string, mappi
 	if err != nil {
 		return fmt.Errorf("error while creating new index: %+v", err)
 	}
-	log.Printf("New index %s is created", index)
+	log.Printf("New index %s is created\n", index)
 	return nil
 }
 
@@ -142,7 +142,7 @@ func (c createNewIndexStep) Undo(client *elasticsearch.Client) error {
 		return fmt.Errorf("error while deleting temporary .management-beats-new index: %+v", err)
 	}
 
-	log.Println("Index .management-beats-new has been removed")
+	log.Printf("Index %s has been removed\n", managementIndexName)
 	return nil
 }
 
@@ -171,7 +171,7 @@ func (m migrateFromOldIndexStep) Do(client *elasticsearch.Client) error {
 	if err != nil {
 		return fmt.Errorf("error while copying beat and enrollment_token documents: %+v", err)
 	}
-	log.Printf("beat and enrollment_token documents migrated to new index: %d", resp.Created)
+	log.Printf("beat and enrollment_token documents migrated to new index: %d\n", resp.Created)
 
 	// migrate tags
 	body = map[string]interface{}{
@@ -354,13 +354,13 @@ func (f finalStep) Do(client *elasticsearch.Client) error {
 	if err != nil {
 		return fmt.Errorf("error while removing .management-beats alias: %+v", err)
 	}
-	log.Println("Alias .management-beats is removed")
+	log.Printf("Alias %s is removed\n", managementIndexName)
 
 	_, _, err = client.Reindex(newManagementIndexName, managementIndexName, nil)
 	if err != nil {
 		return fmt.Errorf("error while moving documents to .management-beats: %+v", err)
 	}
-	log.Println("New index is reindexed into .management-beats")
+	log.Printf("New index is reindexed into %s\n", managementIndexName)
 
 	indicesToDelete := []string{backupManagementIndexName, newManagementIndexName}
 	for _, index := range indicesToDelete {
