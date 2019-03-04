@@ -147,6 +147,7 @@ func (c createNewIndexStep) Undo(client *elasticsearch.Client) error {
 }
 
 func (m migrateFromOldIndexStep) Do(client *elasticsearch.Client) error {
+	log.Println("STEP #3: Migrate from old index")
 	// refresh data before searching
 	_, _, err := client.Refresh(backupManagementIndexName)
 	if err != nil {
@@ -188,13 +189,13 @@ func (m migrateFromOldIndexStep) Do(client *elasticsearch.Client) error {
 		},
 		"script": map[string]interface{}{
 			"lang": "painless",
-			"source": `List hasConfigurationBlockTypes = [];
+			"source": `List hasConfigurationBlocksTypes = [];
 for (configuration_block in ctx._source.tag.configuration_blocks) {
     if (configuration_block.type == 'output') {
-       hasConfigurationBlockTypes = ['output'];
+       hasConfigurationBlocksTypes = ['output'];
     }
 }
-ctx._source.tag.put("hasConfigurationBlockTypes", hasConfigurationBlockTypes);
+ctx._source.tag.put("hasConfigurationBlocksTypes", hasConfigurationBlocksTypes);
 ctx._source.tag.remove('configuration_blocks');
 ctx._source.tag.remove('last_updated');
 `,
@@ -221,9 +222,13 @@ ctx._source.tag.remove('last_updated');
 		var docInBulk []interface{}
 		for _, configurationBlock := range configurationBlocks {
 			indexReq := map[string]interface{}{
-				"index": configurationBlock,
+				"index": map[string]interface{}{
+					"_index": newManagementIndexName,
+					"_type":  "_doc",
+				},
 			}
 			docInBulk = append(docInBulk, indexReq)
+			docInBulk = append(docInBulk, configurationBlock)
 		}
 		_, err = client.Bulk(newManagementIndexName, "_doc", nil, docInBulk)
 		if err != nil {
@@ -311,7 +316,21 @@ func transformTags(doc map[string]interface{}) ([]common.MapStr, error) {
 	}
 
 	configurationBlocks := make([]common.MapStr, 0)
-	configurationBlocksOfTag := cc.([]map[string]interface{})
+	configurationBlocksOfTag := make([]map[string]interface{}, 0)
+	switch v := cc.(type) {
+	case map[string]interface{}:
+		cfgBlock := cc.(map[string]interface{})
+		configurationBlocksOfTag = append(configurationBlocksOfTag, cfgBlock)
+	case []map[string]interface{}:
+		configurationBlocksOfTag = cc.([]map[string]interface{})
+	case []interface{}:
+		for _, b := range cc.([]interface{}) {
+			configurationBlocksOfTag = append(configurationBlocksOfTag, b.(map[string]interface{}))
+		}
+	default:
+		return nil, fmt.Errorf("unexpected tag format %v: %+v", v, cc)
+	}
+
 	for _, b := range configurationBlocksOfTag {
 		cfgBlock := common.MapStr(b)
 		iConfigs, err := cfgBlock.GetValue("configs")
@@ -320,9 +339,9 @@ func transformTags(doc map[string]interface{}) ([]common.MapStr, error) {
 		}
 		cfgBlock.Delete("configs")
 
-		configs := iConfigs.([]map[string]interface{})
+		configs := iConfigs.([]interface{})
 		for _, cfg := range configs {
-			config := common.MapStr(cfg).String()
+			config := common.MapStr(cfg.(map[string]interface{})).String()
 
 			newCfgBlock := common.MapStr{}
 			_, err := newCfgBlock.Put("configuration_block", cfgBlock)
@@ -349,7 +368,7 @@ func (m migrateFromOldIndexStep) Undo(client *elasticsearch.Client) error {
 }
 
 func (f finalStep) Do(client *elasticsearch.Client) error {
-	log.Println("Finilazing migration")
+	log.Println("STEP #4: Finilazing migration")
 	_, _, err := client.DeleteAlias(backupManagementIndexName, managementIndexName)
 	if err != nil {
 		return fmt.Errorf("error while removing .management-beats alias: %+v", err)
@@ -357,6 +376,14 @@ func (f finalStep) Do(client *elasticsearch.Client) error {
 	f.aliasDeleted = true
 	log.Printf("Alias %s is removed\n", managementIndexName)
 
+	_, _, err = client.Refresh(newManagementIndexName)
+	if err != nil {
+		return fmt.Errorf("error while refreshing index after finishing migration: %+v", err)
+	}
+	err = createNewIndexWithMapping(client, managementIndexName, newMapping, nil)
+	if err != nil {
+		return fmt.Errorf("error while creating migrated .beats-management: %+v")
+	}
 	_, _, err = client.Reindex(newManagementIndexName, managementIndexName, nil)
 	if err != nil {
 		return fmt.Errorf("error while moving documents to .management-beats: %+v", err)

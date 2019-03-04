@@ -34,6 +34,8 @@ func init() {
 }
 
 func main() {
+	flag.Parse()
+
 	cfgFile, err := ioutil.ReadFile("migrate.yml")
 	if err != nil {
 		log.Fatalf("Error reading configuration: %+v", err)
