@@ -116,6 +116,7 @@ func (c createNewIndexStep) Do(client *elasticsearch.Client) error {
 		return err
 	}
 	c.created = true
+	return nil
 }
 
 func createNewIndexWithMapping(client *elasticsearch.Client, index string, mapping, settings map[string]interface{}) error {
@@ -365,13 +366,13 @@ func (f finalStep) Do(client *elasticsearch.Client) error {
 
 	_, err = client.DeleteIndex(newManagementIndexName)
 	if err != nil {
-		return fmt.Errorf("error while deleting index '%s': %+v", index, err)
+		return fmt.Errorf("error while deleting index '%s': %+v", newManagementIndexName, err)
 	}
 	f.newTemporaryIndexDeleted = true
 
 	_, err = client.DeleteIndex(backupManagementIndexName)
 	if err != nil {
-		return fmt.Errorf("error while deleting index '%s': %+v", index, err)
+		return fmt.Errorf("error while deleting index '%s': %+v", backupManagementIndexName, err)
 	}
 	f.backupIndexDeleted = true
 
@@ -393,7 +394,7 @@ func (f finalStep) Undo(client *elasticsearch.Client) error {
 				return nil
 			}
 		}
-		_, _, err = client.Alias(backupManagementIndexName, managementIndexName)
+		_, _, err := client.Alias(backupManagementIndexName, managementIndexName)
 		return err
 	}
 

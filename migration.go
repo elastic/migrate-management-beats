@@ -62,7 +62,7 @@ var (
 		SSL:      nil,
 	}
 
-	migrationSteps = steps{
+	migrationSteps = []step{
 		backupStep{
 			oldMapping:  make(map[string]interface{}, 0),
 			oldSettings: make(map[string]interface{}, 0),
@@ -85,7 +85,7 @@ func migrate(c config, step uint) error {
 	for i := step - 1; i < uint(len(migrationSteps)); i++ {
 		err = migrationSteps[i].Do(client)
 		if err != nil {
-			undoErr := migrationSteps[i].Undo(client, i)
+			undoErr := migrationSteps[i].Undo(client)
 			if undoErr != nil {
 				return fmt.Errorf("error while rolling back from error %+v: %+v", err, undoErr)
 			}
