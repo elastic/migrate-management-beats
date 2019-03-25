@@ -269,15 +269,11 @@ func (es *Connection) DeleteAlias(index, alias string) (int, *QueryResult, error
 	return withQueryResult(es.apiCall("DELETE", index, "", "_alias/"+alias, "", nil, nil))
 }
 
-// Returns the list of aliases of an index.
+// Checks if an alias exists.
 // Implements: https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-aliases.html#deleting
-func (es *Connection) Aliases(index string) ([]string, error) {
-	_, result, err := withQueryResult(es.apiCall("GET", index, "", "_alias/*", "", nil, nil))
-	if err != nil {
-		return nil, err
-	}
-	fmt.Println(result)
-	return []string{}, nil
+func (es *Connection) AliasExists(alias string) (int, error) {
+	status, _, err := es.apiCall("HEAD", "/_alias/", alias, "", "", nil, nil)
+	return status, err
 }
 
 // PipelineExists checks if a pipeline with name id already exists.
