@@ -196,6 +196,7 @@ for (configuration_block in ctx._source.tag.configuration_blocks) {
     }
 }
 ctx._source.tag.put("hasConfigurationBlocksTypes", hasConfigurationBlocksTypes);
+ctx._source.tag.put("name", ctx._source.tag.id);
 ctx._source.tag.remove('configuration_blocks');
 ctx._source.tag.remove('last_updated');
 `,
