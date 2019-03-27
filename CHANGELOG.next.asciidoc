@@ -1,0 +1,9 @@
+=== migrate-management-beats
+
+==== v6.7.1
+
+- Copy ids to names in migrated tags.
+
+==== v6.7.0
+
+- Initial release.
