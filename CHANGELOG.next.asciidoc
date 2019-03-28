@@ -1,5 +1,11 @@
 === migrate-management-beats
 
+==== v6.7.2
+
+- Follow up with missing changes in beat.
+- Properly migrate IDs from old documents.
+- Generate IDs for new documents.
+
 ==== v6.7.1
 
 - Copy ids to names in migrated tags.
