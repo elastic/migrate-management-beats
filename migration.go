@@ -22,8 +22,6 @@ import (
 	"log"
 	"time"
 
-	//"gopkg.in/yaml.v2"
-
 	"github.com/elastic/migrate-management-beats/libbeat/common/schema"
 	"github.com/elastic/migrate-management-beats/libbeat/common/transport/tlscommon"
 	"github.com/elastic/migrate-management-beats/libbeat/outputs/elasticsearch"
@@ -47,11 +45,6 @@ var (
 		"configuration_block": schema.Object{
 			"tag":          schema.Conv{Key: "_source.tag.id", Func: schema.NestedKeys, Required: true},
 			"last_updated": schema.Conv{Key: "_source.tag.last_updated", Func: schema.NestedKeys, Required: true},
-		},
-		"tag": schema.Object{
-			"id":    schema.Conv{Key: "_source.tag.id", Func: schema.NestedKeys, Required: true},
-			"name":  schema.Conv{Key: "_source.tag.name", Func: schema.NestedKeys, Optional: true},
-			"color": schema.Conv{Key: "_source.tag.color", Func: schema.NestedKeys, Optional: true},
 		},
 	}
 

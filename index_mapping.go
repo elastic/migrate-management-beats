@@ -42,6 +42,29 @@ var newMapping = mustJSON(`
                 "name": {
                     "type": "keyword"
                 },
+                "status" : {
+                    "properties" : {
+                        "event" : {
+                            "properties" : {
+                                "message" : {
+                                    "type" : "text"
+                                },
+                                "type" : {
+                                    "type" : "keyword"
+                                },
+                                "uuid" : {
+                                    "type" : "keyword"
+                                }
+                            }
+                        },
+                        "timestamp" : {
+                            "type" : "date"
+                        },
+                        "type" : {
+                            "type" : "keyword"
+                        }
+                    }
+                },
                 "tags": {
                     "type": "keyword"
                 },

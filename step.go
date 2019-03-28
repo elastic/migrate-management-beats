@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/gofrs/uuid"
+
 	"github.com/elastic/migrate-management-beats/libbeat/common"
 	"github.com/elastic/migrate-management-beats/libbeat/outputs/elasticsearch"
 )
@@ -154,13 +156,31 @@ func (m migrateFromOldIndexStep) Do(client *elasticsearch.Client) error {
 		return fmt.Errorf("error while refreshing index before performing migration: %+v", err)
 	}
 
-	// reindex data which stays the same
+	err = migrateEnrollmentTokens(client)
+	if err != nil {
+		return err
+	}
+
+	err = migrateBeats(client)
+	if err != nil {
+		return err
+	}
+
+	err = migrateTags(client)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func migrateEnrollmentTokens(client *elasticsearch.Client) error {
 	body := map[string]interface{}{
 		"source": map[string]interface{}{
 			"index": backupManagementIndexName,
 			"query": map[string]interface{}{
-				"terms": map[string]interface{}{
-					"type": []string{"beat", "enrollment_token"},
+				"term": map[string]interface{}{
+					"type": "enrollment_token",
 				},
 			},
 		},
@@ -170,12 +190,40 @@ func (m migrateFromOldIndexStep) Do(client *elasticsearch.Client) error {
 	}
 	_, resp, err := client.Reindex(backupManagementIndexName, newManagementIndexName, body)
 	if err != nil {
-		return fmt.Errorf("error while copying beat and enrollment_token documents: %+v", err)
+		return fmt.Errorf("error while copying enrollment_token documents: %+v", err)
 	}
-	log.Printf("beat and enrollment_token documents migrated to new index: %d\n", resp.Created)
+	log.Printf("enrollment_token documents migrated to new index: %d\n", resp.Created)
+	return nil
+}
 
-	// migrate tags
-	body = map[string]interface{}{
+func migrateBeats(client *elasticsearch.Client) error {
+	body := map[string]interface{}{
+		"source": map[string]interface{}{
+			"index": backupManagementIndexName,
+			"query": map[string]interface{}{
+				"term": map[string]interface{}{
+					"type": "beat",
+				},
+			},
+		},
+		"dest": map[string]interface{}{
+			"index": newManagementIndexName,
+		},
+		"script": map[string]interface{}{
+			"lang":   "painless",
+			"source": `ctx._id = "beat:" + ctx._source.beat.id;`,
+		},
+	}
+	_, resp, err := client.Reindex(backupManagementIndexName, newManagementIndexName, body)
+	if err != nil {
+		return fmt.Errorf("error while copying beat documents: %+v", err)
+	}
+	log.Printf("beat documents migrated to new index: %d\n", resp.Created)
+	return nil
+}
+
+func migrateTags(client *elasticsearch.Client) error {
+	body := map[string]interface{}{
 		"source": map[string]interface{}{
 			"index": backupManagementIndexName,
 			"query": map[string]interface{}{
@@ -197,12 +245,13 @@ for (configuration_block in ctx._source.tag.configuration_blocks) {
 }
 ctx._source.tag.put("hasConfigurationBlocksTypes", hasConfigurationBlocksTypes);
 ctx._source.tag.put("name", ctx._source.tag.id);
+ctx._id = "tag:" + ctx._source.tag.id;
 ctx._source.tag.remove('configuration_blocks');
 ctx._source.tag.remove('last_updated');
 `,
 		},
 	}
-	_, resp, err = client.Reindex(backupManagementIndexName, newManagementIndexName, body)
+	_, resp, err := client.Reindex(backupManagementIndexName, newManagementIndexName, body)
 	if err != nil {
 		return fmt.Errorf("error while migrating tags: %+v", err)
 	}
@@ -221,17 +270,20 @@ ctx._source.tag.remove('last_updated');
 		}
 
 		var docInBulk []interface{}
-		for _, configurationBlock := range configurationBlocks {
+		for uid, configurationBlock := range configurationBlocks {
 			indexReq := map[string]interface{}{
 				"index": map[string]interface{}{
 					"_index": newManagementIndexName,
 					"_type":  "_doc",
+					"_id":    fmt.Sprintf("configuration_block:%s", uid),
 				},
 			}
 			docInBulk = append(docInBulk, indexReq)
 			docInBulk = append(docInBulk, configurationBlock)
 		}
-		_, err = client.Bulk(newManagementIndexName, "_doc", nil, docInBulk)
+		fmt.Printf("%+v\n", docInBulk)
+		r, err := client.Bulk(newManagementIndexName, "_doc", nil, docInBulk)
+		fmt.Println(r)
 		if err != nil {
 			return fmt.Errorf("error while performing bulk request: %+v", err)
 		}
@@ -302,7 +354,7 @@ func queryTagsToTransform(client *elasticsearch.Client, from int) (*elasticsearc
 	return results, nil
 }
 
-func transformTags(doc map[string]interface{}) ([]common.MapStr, error) {
+func transformTags(doc map[string]interface{}) (map[string]common.MapStr, error) {
 	// get the common tag info for all new documents
 	newDocBase, err := newSchema.Apply(doc)
 	if err != nil {
@@ -316,7 +368,7 @@ func transformTags(doc map[string]interface{}) ([]common.MapStr, error) {
 		return nil, fmt.Errorf("error while getting tag.configuration_blocks from document: %+v", err)
 	}
 
-	configurationBlocks := make([]common.MapStr, 0)
+	configurationBlocks := make(map[string]common.MapStr, 0)
 	configurationBlocksOfTag := make([]map[string]interface{}, 0)
 	switch v := cc.(type) {
 	case map[string]interface{}:
@@ -354,9 +406,13 @@ func transformTags(doc map[string]interface{}) ([]common.MapStr, error) {
 				return nil, fmt.Errorf("error while putting config string under configuration_block.config: %+v", err)
 			}
 			newCfgBlock.DeepUpdate(newDocBase)
-			configurationBlocks = append(configurationBlocks, newCfgBlock)
+			uid, _ := uuid.NewV4()
+			newCfgBlock.Put("configuration_block.id", uid.String())
+			newCfgBlock.Put("type", "configuration_block")
+			configurationBlocks[uid.String()] = newCfgBlock
 		}
 	}
+
 	return configurationBlocks, nil
 }
 
