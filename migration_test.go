@@ -18,6 +18,7 @@
 package main
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -27,45 +28,43 @@ import (
 
 func TestTransformTagsIntoConfigBlocks(t *testing.T) {
 	tests := map[string]struct {
-		tag                  map[string]interface{}
+		tag                  []byte
 		expectedConfigBlocks []common.MapStr
 		expectedError        string
 	}{
-		"correct, transformable tag including one configuration snippet": {
-			tag: map[string]interface{}{
-				"_index": ".management-beats-backup",
-				"_type":  " _doc",
-				"_id":    "tag:test",
-				"_score": 0.2876821,
-				"_source": map[string]interface{}{
-					"tag": map[string]interface{}{
+		"correct, transformable tag including one elasticsearch output configuration snippet": {
+			tag: []byte(`
+			{
+				"_source":
+				{
+					"tag": {
 						"color":        "#DD0A73",
 						"id":           "test",
 						"last_updated": "2019-01-22T14:38:15.461Z",
-						"configuration_blocks": []map[string]interface{}{
-							map[string]interface{}{
+						"configuration_blocks": [
+							{
 								"type":        "output",
 								"description": "the best output",
-								"configs": []map[string]interface{}{
-									map[string]interface{}{
-										"elasticsearch": map[string]interface{}{
-											"hosts":    []string{"http://localhost:9200"},
+								"configs": [
+									{
+										"elasticsearch": {
+											"hosts":    ["http://localhost:9200"],
 											"username": "elastic",
-											"password": "changeme",
+											"password": "changeme"
 										},
-										"output": "elasticsearch",
-									},
-								},
-							},
-						},
+										"output": "elasticsearch"
+									}
+								]
+							}
+						]
 					},
-					"type": "tag",
-				},
-			},
+					"type": "tag"
+				}
+			}`),
 			expectedConfigBlocks: []common.MapStr{
 				common.MapStr{
 					"configuration_block": common.MapStr{
-						"config":       "{\"elasticsearch\":{\"hosts\":[\"http://localhost:9200\"],\"password\":\"changeme\",\"username\":\"elastic\"},\"output\":\"elasticsearch\"}",
+						"config":       "{\"_sub_type\":\"elasticsearch\",\"hosts\":[\"http://localhost:9200\"],\"password\":\"changeme\",\"username\":\"elastic\"}",
 						"description":  "the best output",
 						"last_updated": "2019-01-22T14:38:15.461Z",
 						"tag":          "test",
@@ -76,50 +75,59 @@ func TestTransformTagsIntoConfigBlocks(t *testing.T) {
 			},
 			expectedError: "",
 		},
-		"correct, transformable tag including two configurations: one nested": {
-			tag: map[string]interface{}{
-				"_index": ".management-beats-backup",
-				"_type":  " _doc",
-				"_id":    "tag:test",
-				"_score": 0.2876821,
-				"_source": map[string]interface{}{
-					"tag": map[string]interface{}{
+		"correct, transformable tag including two configurations: one filebeat input, one elasticsearch output": {
+			tag: []byte(`
+			{
+				"_source":
+				{
+					"tag": {
 						"color":        "#DD0A73",
 						"id":           "test",
 						"last_updated": "2019-01-22T14:38:15.461Z",
-						"configuration_blocks": []map[string]interface{}{
-							map[string]interface{}{
+						"configuration_blocks": [
+							{
 								"type":        "filebeat.inputs",
 								"description": "my input",
-								"configs": []map[string]interface{}{
-									map[string]interface{}{
-										"json.keys_under_root": "true",
-										"paths":                []string{"t.log"}},
-								},
+								"configs": [
+									{
+										"json.keys_under_root": true,
+										"paths":                ["t.log"]
+									}
+								]
 							},
-							map[string]interface{}{
+							{
 								"type":        "output",
 								"description": "the best output",
-								"configs": []map[string]interface{}{
-									map[string]interface{}{
-										"elasticsearch": map[string]interface{}{
-											"hosts":    []string{"http://localhost:9200"},
+								"configs": [
+									{
+										"elasticsearch": {
+											"hosts":    ["http://localhost:9200"],
 											"username": "elastic",
-											"password": "changeme",
+											"password": "changeme"
 										},
-										"output": "elasticsearch",
-									},
-								},
-							},
-						},
+										"output": "elasticsearch"
+									}
+								]
+							}
+						]
 					},
-					"type": "tag",
-				},
-			},
+					"type": "tag"
+				}
+			}`),
 			expectedConfigBlocks: []common.MapStr{
 				common.MapStr{
 					"configuration_block": common.MapStr{
-						"config":       "{\"json.keys_under_root\":\"true\",\"paths\":[\"t.log\"]}",
+						"config":       "{\"_sub_type\":\"elasticsearch\",\"hosts\":[\"http://localhost:9200\"],\"password\":\"changeme\",\"username\":\"elastic\"}",
+						"description":  "the best output",
+						"last_updated": "2019-01-22T14:38:15.461Z",
+						"tag":          "test",
+						"type":         "output",
+					},
+					"type": "configuration_block",
+				},
+				common.MapStr{
+					"configuration_block": common.MapStr{
+						"config":       "{\"json.keys_under_root\":true,\"paths\":[\"t.log\"]}",
 						"description":  "my input",
 						"last_updated": "2019-01-22T14:38:15.461Z",
 						"tag":          "test",
@@ -127,10 +135,65 @@ func TestTransformTagsIntoConfigBlocks(t *testing.T) {
 					},
 					"type": "configuration_block",
 				},
+			},
+			expectedError: "",
+		},
+		"correct, transformable tag including two configurations: one metricbeat module, one elasticsearch output": {
+			tag: []byte(`
+			{
+				"_source":
+				{
+					"tag": {
+						"color":        "#DD0A73",
+						"id":           "test",
+						"last_updated": "2019-01-22T14:38:15.461Z",
+						"configuration_blocks": [
+							{
+								"type":        "metricbeat.modules",
+								"description": "beat module",
+								"configs": [
+									{
+										"node.namespace": "node",
+										"module":         "munin",
+										"hosts":          ["localhost"],
+										"period":         "30s"
+									}
+								]
+							},
+							{
+								"type":        "output",
+								"description": "simpleput",
+								"configs": [
+									{
+										"elasticsearch": {
+											"hosts":    ["http://localhost:9200"],
+											"username": "elastic",
+											"password": "changeme"
+										},
+										"output": "elasticsearch"
+									}
+								]
+							}
+						]
+					},
+					"type": "tag"
+				}
+			}`),
+			expectedConfigBlocks: []common.MapStr{
 				common.MapStr{
 					"configuration_block": common.MapStr{
-						"config":       "{\"elasticsearch\":{\"hosts\":[\"http://localhost:9200\"],\"password\":\"changeme\",\"username\":\"elastic\"},\"output\":\"elasticsearch\"}",
-						"description":  "the best output",
+						"config":       "{\"_sub_type\":\"munin\",\"hosts\":[\"localhost\"],\"node.namespace\":\"node\",\"period\":\"30s\"}",
+						"description":  "beat module",
+						"last_updated": "2019-01-22T14:38:15.461Z",
+						"tag":          "test",
+						"type":         "metricbeat.modules",
+					},
+					"type": "configuration_block",
+				},
+				common.MapStr{
+					"configuration_block": common.MapStr{
+						"config":       "{\"_sub_type\":\"elasticsearch\",\"hosts\":[\"http://localhost:9200\"],\"password\":\"changeme\",\"username\":\"elastic\"}",
+						"description":  "simpleput",
 						"last_updated": "2019-01-22T14:38:15.461Z",
 						"tag":          "test",
 						"type":         "output",
@@ -140,58 +203,81 @@ func TestTransformTagsIntoConfigBlocks(t *testing.T) {
 			},
 			expectedError: "",
 		},
-		"tag id is missing from the document": {
-			tag: map[string]interface{}{
-				"_index": ".management-beats-backup",
-				"_type":  " _doc",
-				"_id":    "tag:test",
-				"_score": 0.2876821,
-				"_source": map[string]interface{}{
-					"tag": map[string]interface{}{
-						"color":                "#DD0A73",
-						"last_updated":         "2019-01-22T14:38:15.461Z",
-						"configuration_blocks": []map[string]interface{}{},
+		"correct, transformable tag including two configurations: one filebeat module, one elasticsearch output": {
+			tag: []byte(`
+			{
+				"_source":
+				{
+					"tag": {
+						"color":        "#DD0A73",
+						"id":           "test",
+						"last_updated": "2019-01-22T14:38:15.461Z",
+						"configuration_blocks": [
+							{
+								"type":        "filebeat.modules",
+								"description": "beat module",
+								"configs": [
+									{
+										"module": "system"
+									}
+								]
+							},
+							{
+								"type":        "output",
+								"description": "simpleput",
+								"configs": [
+									{
+										"elasticsearch": {
+											"hosts":    ["http://localhost:9200"],
+											"username": "elastic",
+											"password": "changeme"
+										},
+										"output": "elasticsearch"
+									}
+								]
+							}
+						]
 					},
-					"type": "tag",
+					"type": "tag"
+				}
+			}`),
+			expectedConfigBlocks: []common.MapStr{
+				common.MapStr{
+					"configuration_block": common.MapStr{
+						"config":       "{\"_sub_type\":\"system\"}",
+						"description":  "beat module",
+						"last_updated": "2019-01-22T14:38:15.461Z",
+						"tag":          "test",
+						"type":         "filebeat.modules",
+					},
+					"type": "configuration_block",
+				},
+				common.MapStr{
+					"configuration_block": common.MapStr{
+						"config":       "{\"_sub_type\":\"elasticsearch\",\"hosts\":[\"http://localhost:9200\"],\"password\":\"changeme\",\"username\":\"elastic\"}",
+						"description":  "simpleput",
+						"last_updated": "2019-01-22T14:38:15.461Z",
+						"tag":          "test",
+						"type":         "output",
+					},
+					"type": "configuration_block",
 				},
 			},
-			expectedConfigBlocks: []common.MapStr{},
-			expectedError:        "error while extracting tag info: 1 error: key `_source.tag.id` not found",
-		},
-		"last_updated is missing from the document": {
-			tag: map[string]interface{}{
-				"_index": ".management-beats-backup",
-				"_type":  " _doc",
-				"_id":    "tag:test",
-				"_score": 0.2876821,
-				"_source": map[string]interface{}{
-					"tag": map[string]interface{}{
-						"color":                "#DD0A73",
-						"id":                   "test",
-						"configuration_blocks": []map[string]interface{}{},
-					},
-					"type": "tag",
-				},
-			},
-			expectedConfigBlocks: []common.MapStr{},
-			expectedError:        "error while extracting tag info: 1 error: key `_source.tag.last_updated` not found",
+			expectedError: "",
 		},
 		"configuration_blocks is missing from the document": {
-			tag: map[string]interface{}{
-				"_index": ".management-beats-backup",
-				"_type":  " _doc",
-				"_id":    "tag:test",
-				"_score": 0.2876821,
-				"_source": map[string]interface{}{
-					"tag": map[string]interface{}{
+			tag: []byte(`
+			{
+				"_source":
+				{
+					"tag": {
 						"color":                "#DD0A73",
 						"id":                   "test",
-						"last_updated":         "2019-01-22T14:38:15.461Z",
-						"configuration_blocks": []map[string]interface{}{},
+						"last_updated":         "2019-01-22T14:38:15.461Z"
 					},
-					"type": "tag",
-				},
-			},
+					"type": "tag"
+				}
+			}`),
 			expectedConfigBlocks: []common.MapStr{},
 			expectedError:        "",
 		},
@@ -199,7 +285,14 @@ func TestTransformTagsIntoConfigBlocks(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			configurationBlocks, err := transformTags(test.tag)
+
+			var tagDoc TagDocument
+			err := json.Unmarshal(test.tag, &tagDoc)
+			if err != nil {
+				t.Fatalf("Error while serializing test data: %+v", err)
+			}
+
+			configurationBlocks, err := transformTag(tagDoc.Source.Tag)
 
 			if test.expectedError != "" {
 				assert.EqualError(t, err, test.expectedError)

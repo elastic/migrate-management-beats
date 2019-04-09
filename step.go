@@ -58,6 +58,22 @@ type finalStep struct {
 	backupIndexDeleted       bool
 }
 
+type TagV66 struct {
+	ID                 string `json:"id"`
+	LastUpdated        string `json:"last_updated"`
+	ConfigrationBlocks []struct {
+		Type        string          `json:"type"`
+		Description string          `json:"description"`
+		Configs     []common.MapStr `json:"configs"`
+	} `json:"configuration_blocks"`
+}
+
+type TagDocument struct {
+	Source struct {
+		Tag TagV66 `json:"tag"`
+	} `json:"_source"`
+}
+
 func (b backupStep) Do(client *elasticsearch.Client) error {
 	log.Printf("STEP #1: Backup existing %s index\n", managementIndexName)
 	_, _, err := client.Reindex(managementIndexName, backupManagementIndexName, nil)
@@ -124,9 +140,7 @@ func (c createNewIndexStep) Do(client *elasticsearch.Client) error {
 func createNewIndexWithMapping(client *elasticsearch.Client, index string, mapping, settings map[string]interface{}) error {
 	body := map[string]interface{}{
 		"settings": settings,
-		"mappings": map[string]interface{}{
-			"_doc": mapping,
-		},
+		"mappings": mapping,
 	}
 	_, _, err := client.CreateIndex(index, body)
 	if err != nil {
@@ -258,13 +272,19 @@ ctx._source.tag.remove('last_updated');
 	log.Printf("Tags migrated to new index: %d\n", resp.Created)
 
 	// migrate configuration blocks from tags
-	tags, err := getAllTagsToTransform(client)
+	rawTags, err := getAllTagsToTransform(client)
 	if err != nil {
 		return fmt.Errorf("error querying tags from old index: %+v", err)
 	}
+	tags := make([]TagV66, 0)
+	for _, rawTag := range rawTags {
+		var tagDoc TagDocument
+		json.Unmarshal(rawTag, &tagDoc)
+		tags = append(tags, tagDoc.Source.Tag)
+	}
 
 	for _, tag := range tags {
-		configurationBlocks, err := transformTags(tag)
+		configurationBlocks, err := transformTag(tag)
 		if err != nil {
 			return fmt.Errorf("error while transforming tag into configuration_block: %+v", err)
 		}
@@ -293,20 +313,15 @@ ctx._source.tag.remove('last_updated');
 	return nil
 }
 
-func getAllTagsToTransform(client *elasticsearch.Client) ([]map[string]interface{}, error) {
+func getAllTagsToTransform(client *elasticsearch.Client) ([][]byte, error) {
 	from := 0
 	results, err := queryTagsToTransform(client, from)
 	if err != nil {
 		return nil, fmt.Errorf("error while getting tags to transform: %+v", err)
 	}
 
-	tags := make([]map[string]interface{}, 0)
-	for _, rawTag := range results.Hits.Hits {
-		var tag common.MapStr
-		err = json.Unmarshal(rawTag, &tag)
-		if err != nil {
-			return nil, fmt.Errorf("error unmarshaling data: %+v", err)
-		}
+	tags := make([][]byte, 0)
+	for _, tag := range results.Hits.Hits {
 		tags = append(tags, tag)
 	}
 
@@ -318,12 +333,7 @@ func getAllTagsToTransform(client *elasticsearch.Client) ([]map[string]interface
 			return nil, err
 		}
 
-		for _, rawTag := range results.Hits.Hits {
-			var tag map[string]interface{}
-			err = json.Unmarshal(rawTag, &tag)
-			if err != nil {
-				return nil, fmt.Errorf("error unmarshaling data: %+v", err)
-			}
+		for _, tag := range results.Hits.Hits {
 			tags = append(tags, tag)
 		}
 
@@ -354,62 +364,62 @@ func queryTagsToTransform(client *elasticsearch.Client, from int) (*elasticsearc
 	return results, nil
 }
 
-func transformTags(doc map[string]interface{}) (map[string]common.MapStr, error) {
-	// get the common tag info for all new documents
-	newDocBase, err := newSchema.Apply(doc)
-	if err != nil {
-		return nil, fmt.Errorf("error while extracting tag info: %+v", err)
-	}
-
-	// get configuration_configuration blocks to iterate over
-	docMap := common.MapStr(doc)
-	cc, err := docMap.GetValue("_source.tag.configuration_blocks")
-	if err != nil {
-		return nil, fmt.Errorf("error while getting tag.configuration_blocks from document: %+v", err)
-	}
-
+func transformTag(tag TagV66) (map[string]common.MapStr, error) {
 	configurationBlocks := make(map[string]common.MapStr, 0)
-	configurationBlocksOfTag := make([]map[string]interface{}, 0)
-	switch v := cc.(type) {
-	case map[string]interface{}:
-		cfgBlock := cc.(map[string]interface{})
-		configurationBlocksOfTag = append(configurationBlocksOfTag, cfgBlock)
-	case []map[string]interface{}:
-		configurationBlocksOfTag = cc.([]map[string]interface{})
-	case []interface{}:
-		for _, b := range cc.([]interface{}) {
-			configurationBlocksOfTag = append(configurationBlocksOfTag, b.(map[string]interface{}))
-		}
-	default:
-		return nil, fmt.Errorf("unexpected tag format %v: %+v", v, cc)
-	}
-
-	for _, b := range configurationBlocksOfTag {
-		cfgBlock := common.MapStr(b)
-		iConfigs, err := cfgBlock.GetValue("configs")
-		if err != nil {
-			return nil, fmt.Errorf("error while getting configs from configuration_block: %+v", err)
-		}
-		cfgBlock.Delete("configs")
-
-		configs := iConfigs.([]map[string]interface{})
-		for _, cfg := range configs {
-			config := common.MapStr(cfg).String()
-
-			newCfgBlock := common.MapStr{}
-			_, err := newCfgBlock.Put("configuration_block", cfgBlock)
+	for _, block := range tag.ConfigrationBlocks {
+		for _, cfg := range block.Configs {
+			blockID, err := uuid.NewV4()
 			if err != nil {
-				return nil, fmt.Errorf("error while nesting config info under configuration_block: %+v", err)
+				return nil, err
 			}
-			_, err = newCfgBlock.Put("configuration_block.config", config)
-			if err != nil {
-				return nil, fmt.Errorf("error while putting config string under configuration_block.config: %+v", err)
+
+			newConfigBlock := common.MapStr{
+				"configuration_block": common.MapStr{
+					"id":           blockID.String(),
+					"last_updated": tag.LastUpdated,
+					"tag":          tag.ID,
+					"type":         block.Type,
+					"description":  block.Description,
+				},
+				"type": "configuration_block",
 			}
-			newCfgBlock.DeepUpdate(newDocBase)
-			uid, _ := uuid.NewV4()
-			newCfgBlock.Put("configuration_block.id", uid.String())
-			newCfgBlock.Put("type", "configuration_block")
-			configurationBlocks[uid.String()] = newCfgBlock
+
+			cfgString := ""
+			switch block.Type {
+			case "filebeat.inputs":
+				cfgString = cfg.String()
+			case "output":
+				iSubType, err := cfg.GetValue(block.Type)
+				if err != nil {
+					return nil, err
+				}
+				subType := iSubType.(string)
+				iConfig, err := cfg.GetValue(subType)
+				if err != nil {
+					return nil, err
+				}
+				config := common.MapStr(
+					iConfig.(map[string]interface{}),
+				)
+				config.Put("_sub_type", subType)
+				cfgString = config.String()
+			case "filebeat.modules", "metricbeat.modules":
+				iSubType, err := cfg.GetValue("module")
+				if err != nil {
+					return nil, err
+				}
+				subType := iSubType.(string)
+
+				config := cfg.Clone()
+				config.Delete("module")
+				config.Put("_sub_type", subType)
+				cfgString = config.String()
+			default:
+				return nil, fmt.Errorf("unknown configuration_block type")
+			}
+
+			newConfigBlock.Put("configuration_block.config", cfgString)
+			configurationBlocks[blockID.String()] = newConfigBlock
 		}
 	}
 
