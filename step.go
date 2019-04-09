@@ -392,9 +392,9 @@ func transformTags(doc map[string]interface{}) (map[string]common.MapStr, error)
 		}
 		cfgBlock.Delete("configs")
 
-		configs := iConfigs.([]interface{})
+		configs := iConfigs.([]map[string]interface{})
 		for _, cfg := range configs {
-			config := common.MapStr(cfg.(map[string]interface{})).String()
+			config := common.MapStr(cfg).String()
 
 			newCfgBlock := common.MapStr{}
 			_, err := newCfgBlock.Put("configuration_block", cfgBlock)
@@ -439,7 +439,7 @@ func (f finalStep) Do(client *elasticsearch.Client) error {
 	}
 	err = createNewIndexWithMapping(client, managementIndexName, newMapping, nil)
 	if err != nil {
-		return fmt.Errorf("error while creating migrated .beats-management: %+v")
+		return fmt.Errorf("error while creating migrated .beats-management: %+v", err)
 	}
 	_, _, err = client.Reindex(newManagementIndexName, managementIndexName, nil)
 	if err != nil {

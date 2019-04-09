@@ -71,10 +71,7 @@ func TestTransformTagsIntoConfigBlocks(t *testing.T) {
 						"tag":          "test",
 						"type":         "output",
 					},
-					"tag": common.MapStr{
-						"color": "#DD0A73",
-						"id":    "test",
-					},
+					"type": "configuration_block",
 				},
 			},
 			expectedError: "",
@@ -128,10 +125,7 @@ func TestTransformTagsIntoConfigBlocks(t *testing.T) {
 						"tag":          "test",
 						"type":         "filebeat.inputs",
 					},
-					"tag": common.MapStr{
-						"color": "#DD0A73",
-						"id":    "test",
-					},
+					"type": "configuration_block",
 				},
 				common.MapStr{
 					"configuration_block": common.MapStr{
@@ -141,10 +135,7 @@ func TestTransformTagsIntoConfigBlocks(t *testing.T) {
 						"tag":          "test",
 						"type":         "output",
 					},
-					"tag": common.MapStr{
-						"color": "#DD0A73",
-						"id":    "test",
-					},
+					"type": "configuration_block",
 				},
 			},
 			expectedError: "",
@@ -165,7 +156,7 @@ func TestTransformTagsIntoConfigBlocks(t *testing.T) {
 				},
 			},
 			expectedConfigBlocks: []common.MapStr{},
-			expectedError:        "error while extracting tag info: 2 errors: key `_source.tag.id` not found; key `_source.tag.id` not found",
+			expectedError:        "error while extracting tag info: 1 error: key `_source.tag.id` not found",
 		},
 		"last_updated is missing from the document": {
 			tag: map[string]interface{}{
@@ -216,7 +207,11 @@ func TestTransformTagsIntoConfigBlocks(t *testing.T) {
 				assert.Nil(t, err)
 			}
 			assert.Equal(t, len(test.expectedConfigBlocks), len(configurationBlocks))
-			assert.ElementsMatch(t, test.expectedConfigBlocks, configurationBlocks)
+
+			for _, configBlock := range configurationBlocks {
+				configBlock.Delete("configuration_block.id")
+				assert.Contains(t, test.expectedConfigBlocks, configBlock)
+			}
 		})
 	}
 }
