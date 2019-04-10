@@ -19,6 +19,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"log"
 
@@ -27,6 +28,9 @@ import (
 
 var (
 	startingStep uint
+
+	build  string
+	commit string
 )
 
 func init() {
@@ -35,6 +39,8 @@ func init() {
 
 func main() {
 	flag.Parse()
+
+	printVersion()
 
 	cfgFile, err := ioutil.ReadFile("migrate.yml")
 	if err != nil {
@@ -50,4 +56,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error while migrating: %+v", err)
 	}
+}
+
+func printVersion() {
+	fmt.Printf("Build time: %s, build hash: %s\n", build, commit)
 }
