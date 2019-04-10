@@ -1,5 +1,9 @@
 === migrate-management-beats
 
+==== v6.7.3
+
+- Transform sub types of configuration blocks so migrated tags can be edited.
+
 ==== v6.7.2
 
 - Follow up with missing changes in beat.
